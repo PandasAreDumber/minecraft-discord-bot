@@ -1,0 +1,34 @@
+# Environment / secrets — never commit this
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Minecraft server files — these are large and shouldn't be in the repo
+world/
+world_nether/
+world_the_end/
+logs/
+crash-reports/
+*.jar
+server.properties
+ops.json
+whitelist.json
+banned-players.json
+banned-ips.json
+usercache.json
+eula.txt
+
+# OS
+.DS_Store
+Thumbs.db
