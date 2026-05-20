@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import subprocess
 from typing import Optional
 
@@ -13,6 +14,7 @@ load_dotenv()
 
 TOKEN: str = os.environ["DISCORD_TOKEN"]
 CHANNEL_ID: int = int(os.environ["DISCORD_CHANNEL_ID"])
+OWNER_ID: int = int(os.environ["OWNER_ID"])
 MC_HOST: str = os.getenv("MC_HOST", "localhost")
 MC_PORT: int = int(os.getenv("MC_PORT", "25565"))
 JAR_PATH: str = os.environ["JAR_PATH"]
@@ -147,8 +149,11 @@ async def start(ctx: commands.Context):
 
 
 @bot.command()
-@commands.has_permissions(administrator=True)
-async def stop(ctx: commands.Context):
+async def close(ctx: commands.Context):
+    if ctx.author.id != OWNER_ID:
+        await ctx.send("❌ Only the server owner can use that command.")
+        return
+
     global server_process
 
     online, _ = await is_server_online()
@@ -171,6 +176,63 @@ async def stop(ctx: commands.Context):
 
 
 @bot.command()
+async def seed(ctx: commands.Context):
+    online, _ = await is_server_online()
+    if not online:
+        await ctx.send("❌ The server is not currently online.")
+        return
+
+    if server_process is None or server_process.poll() is not None:
+        await ctx.send("⚠️ Server wasn't started by this bot — can't send commands to it.")
+        return
+
+    try:
+        server_process.stdin.write(b"seed\n")
+        server_process.stdin.flush()
+        await asyncio.sleep(2)
+
+        log_path = os.path.join(
+            os.path.dirname(os.path.abspath(JAR_PATH)), "logs", "latest.log"
+        )
+        seed_value = None
+        if os.path.exists(log_path):
+            with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+            for line in reversed(lines[-30:]):
+                match = re.search(r"[Ss]eed[:\s]+\[?(-?\d+)\]?", line)
+                if match:
+                    seed_value = match.group(1)
+                    break
+
+        if seed_value:
+            await ctx.send(f"🌱 World seed: `{seed_value}`")
+        else:
+            await ctx.send("⚠️ Could not read the seed from server logs.")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to get seed: {e}")
+
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def whitelist(ctx: commands.Context, name: str):
+    online, _ = await is_server_online()
+    if not online:
+        await ctx.send("❌ The server is not currently online.")
+        return
+
+    if server_process is None or server_process.poll() is not None:
+        await ctx.send("⚠️ Server wasn't started by this bot — can't send commands to it.")
+        return
+
+    try:
+        server_process.stdin.write(f"whitelist add {name}\n".encode())
+        server_process.stdin.flush()
+        await ctx.send(f"✅ `{name}` has been added to the whitelist.")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to whitelist player: {e}")
+
+
+@bot.command()
 async def status(ctx: commands.Context):
     online, players = await is_server_online()
     ip = last_ip or "Unknown"
@@ -189,10 +251,12 @@ async def status(ctx: commands.Context):
 
 
 @start.error
-@stop.error
+@whitelist.error
 async def admin_error(ctx: commands.Context, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("❌ You need Administrator permission to use that command.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send("❌ Usage: `!whitelist <playername>`")
 
 
 bot.run(TOKEN)
